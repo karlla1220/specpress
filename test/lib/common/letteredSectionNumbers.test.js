@@ -110,6 +110,16 @@ describe('written section numbers', () => {
   })
 })
 
+describe('test case variants', () => {
+  test('written 6.2.1.1_1 below its clause and a placeholder x.x.1_1', () => {
+    const hs = headings(render({
+      'c:/spec/06 Tx/02 Power.md': '## 6.2 Power\n\n#### 6.2.1.1_1 Variant\n\n##### 6.2.1.1_1.1 Test purpose',
+      'c:/spec/06 Tx/03 Other.md': '## x.x Other\n\n### x.x.1_1 Variant',
+    }))
+    assert.deepStrictEqual(hs.map(h => h.text), ['6 Tx', '6.2 Power', '6.2.1.1_1 Variant', '6.2.1.1_1.1 Test purpose', '6.3 Other', '6.3.1_1 Variant'])
+  })
+})
+
 describe('headings that only look like placeholders', () => {
   test('xApp and x2 are words', () => {
     assert.strictEqual(parsePlaceholder('xApp procedures'), null)
