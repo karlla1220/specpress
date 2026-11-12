@@ -120,6 +120,29 @@ describe('test case variants', () => {
   })
 })
 
+describe('number-as-published marker (converted legacy specifications)', () => {
+  const M = '<!-- number-as-published -->\n'
+  test('keeps a published number that disagrees with the path', () => {
+    const hs = headings(render({ 'c:/spec/08 Msg/02 Defs.md': '## 8.2 Defs\n\n### 8.2.27 Reject\n\n' + M + '#### 8.6.27.1 Message definition\n\n### 8.2.28 Next' }))
+    assert.deepStrictEqual(hs.map(h => h.text), ['8 Msg', '8.2 Defs', '8.2.27 Reject', '8.6.27.1 Message definition', '8.2.28 Next'])
+  })
+
+  test('keeps a published number the parser cannot read', () => {
+    const hs = headings(render({ 'c:/spec/07 Rx/06B Blocking.md': '## 7.6B Blocking\n\n' + M + '###### 7.6 B.2.1.4.1 Initial condition' }))
+    assert.strictEqual(hs[2].text, '7.6 B.2.1.4.1 Initial condition')
+  })
+
+  test('an unneeded marker is an error', () => {
+    const hs = headings(render({ 'c:/spec/05 RRC/01 Gen.md': '## 5.1 Gen\n\n' + M + '### 5.1.1 Fine' }))
+    assert.ok(hs[2].text.includes('E.R.R.O.R'), JSON.stringify(hs))
+  })
+
+  test('a marker on a placeholder or an unnumbered heading is an error', () => {
+    const hs = headings(render({ 'c:/spec/05 RRC/01 Gen.md': '## x.x Gen\n\n' + M + '### x.x.1 Sub\n\n' + M + '### Plain title' }))
+    assert.ok(hs[2].text.includes('E.R.R.O.R') && hs[3].text.includes('E.R.R.O.R'), JSON.stringify(hs))
+  })
+})
+
 describe('headings that only look like placeholders', () => {
   test('xApp and x2 are words', () => {
     assert.strictEqual(parsePlaceholder('xApp procedures'), null)
