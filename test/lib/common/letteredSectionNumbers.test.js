@@ -75,6 +75,11 @@ describe('placeholders under lettered paths', () => {
     const hs = headings(render({ 'c:/spec/06 Tx/02A CA/01 General.md': '### x.x.x General' }))
     assert.deepStrictEqual(hs.map(h => h.text), ['6 Tx', '6.2A CA', '6.2A.1 General'])
   })
+
+  test('a 00 name without a separator is still the folder heading file', () => {
+    const hs = headings(render({ 'c:/spec/05 P/00Intro.md': '# x P intro', 'c:/spec/05 P/01 A.md': '## x.x A' }))
+    assert.deepStrictEqual(hs.map(h => h.text), ['5 P intro', '5.1 A'])
+  })
 })
 
 describe('written section numbers', () => {
