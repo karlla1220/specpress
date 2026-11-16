@@ -224,3 +224,47 @@ describe('key-based rows format', () => {
 
 
 })
+describe('jsonToDocxTable: list lines in a cell', () => {
+
+  /** The table's cell paragraphs as [style, text] from the real document.xml. */
+  async function cellParagraphs(table) {
+    const { Document, Packer } = require('docx')
+    const JSZip = require('jszip')
+    const buf = await Packer.toBuffer(new Document({ sections: [{ children: [table] }] }))
+    const xml = await (await JSZip.loadAsync(buf)).file('word/document.xml').async('string')
+    const cells = xml.match(/<w:tc>[\s\S]*?<\/w:tc>/g) || []
+    return cells.flatMap(tc => (tc.match(/<w:p>[\s\S]*?<\/w:p>|<w:p [\s\S]*?<\/w:p>/g) || []).map(p => [
+      (p.match(/w:pStyle w:val="([^"]+)"/) || [])[1],
+      (p.match(/<w:t[^>]*>([^<]*)</g) || []).map(t => t.replace(/<w:t[^>]*>|</g, '')).join('')]))
+  }
+
+  // 38.331 CellGroupConfig field description: B1/B2 paragraphs with a typed "-<tab>" label in a TAL cell.
+  const cell = [
+    'The field is mandatory present in the *RRCReconfiguration* message:',
+    '',
+    '- \\- in the *masterCellGroup:*',
+    '',
+    '  - \\- at change of AS security key,',
+    '',
+    '- \\- in the *secondaryCellGroup* at:',
+    '',
+    'Otherwise, it is optional.'
+  ].join('\n')
+
+  test('list lines become B1/B2 paragraphs and blank separator lines no paragraph', async () => {
+    const table = await jsonToDocxTable({ columns: [{ name: '' }], rows: [[cell]] })
+    const paras = await cellParagraphs(table)
+    assert.deepStrictEqual(paras.map(p => p[0]).slice(-5), ['TAL', 'B1', 'B2', 'B1', 'TAL'], JSON.stringify(paras))
+  })
+
+  test('the bullet is followed by a tab, as in the body', async () => {
+    const table = await jsonToDocxTable({ columns: [{ name: '' }], rows: [['- \\- item']] })
+    const paras = await cellParagraphs(table)
+    assert.deepStrictEqual(paras[paras.length - 1], ['B1', '-\titem'])
+  })
+
+  test('<u> in a cell is an underlined run', async () => {
+    const table = await jsonToDocxTable({ columns: [{ name: '' }], rows: [['<u>QPSK</u> plain']] })
+    assert.ok(JSON.stringify(table).includes('w:u'), 'expected an underline property')
+  })
+})
