@@ -335,3 +335,14 @@ describe('mergeOnAbsence', () => {
   })
 
 })
+describe('jsonToHtmlTable: list lines in a cell', () => {
+  const MarkdownIt = require('markdown-it')
+  const md = new MarkdownIt({ html: true })
+  test('consecutive list lines render as one nested list', () => {
+    const cell = ['Intro:', '', '- \\- a', '', '  - \\- b', '', '- \\- c', '', 'After.'].join('\n')
+    const html = jsonToHtmlTable({ columns: [{ name: '' }], rows: [[cell]] }, s => md.render(s))
+    assert.match(html, /<ul>\s*<li>[\s\S]*<ul>\s*<li>[\s\S]*b[\s\S]*<\/ul>/, html)
+    assert.ok(!html.includes('<pre>'), 'a nested item must not become a code block')
+    assert.ok(html.includes('After.'))
+  })
+})
