@@ -176,3 +176,12 @@ describe('asnToMarkdown', () => {
     assert.ok(result.includes('just a comment'))
   })
 })
+
+describe('highlightAsn entities', () => {
+  test('an escaped & stays an entity before a field reference', () => {
+    const result = highlightAsn('\t&InitiatingMessage\t\t,\n\tid <= 5')
+    assert.ok(result.includes('&amp;<span class="asn-type">InitiatingMessage</span>'), result)
+    assert.ok(!result.includes('<span class="asn-field">amp</span>'), result)
+    assert.ok(result.includes('&lt;='), result)
+  })
+})
