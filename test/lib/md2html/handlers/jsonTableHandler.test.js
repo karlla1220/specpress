@@ -368,6 +368,23 @@ describe('Cell blocks: nested JsonTable link and fenced block', () => {
     assert.ok(html.indexOf('Before:') < html.indexOf('Value') && html.indexOf('Value') < html.indexOf('After'))
   })
 
+  test('a cell renders with the page settings, so a diagram in it uses the page config', () => {
+    const md = new Md2Html()
+    md.initMarkdown()
+    const seen = []
+    const fence = md.md.renderer.rules.fence
+    md.md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+      if (tokens[idx].info === 'probe') { seen.push(env._mermaidConfig); return '<pre>probe</pre>' }
+      return fence(tokens, idx, options, env, self)
+    }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsontable-'))
+    fs.mkdirSync(path.join(dir, 'assets', 'tables'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'assets', 'tables', 'outer.json'), JSON.stringify({ rows: [['A\n\n```probe\nx\n```']] }))
+    md.mermaidConfig = '{"theme":"page"}'
+    md.renderBody('[JsonTable](assets/tables/outer.json)\n', false, dir)
+    assert.deepStrictEqual(seen, ['{"theme":"page"}'])
+  })
+
   test('a nested table may nest again', () => {
     const html = render('[JsonTable](assets/tables/a.json)', {
       'a.json': { rows: [['[JsonTable](assets/tables/b.json)']] },
