@@ -346,3 +346,59 @@ describe('jsonToHtmlTable: list lines in a cell', () => {
     assert.ok(html.includes('After.'))
   })
 })
+
+describe('Cell blocks: nested JsonTable link and fenced block', () => {
+  const fs = require('fs')
+  const os = require('os')
+  const { Md2Html } = require('../../../../lib/md2html/md2html')
+
+  function render(cell, files = {}) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsontable-'))
+    fs.mkdirSync(path.join(dir, 'assets', 'tables'), { recursive: true })
+    for (const [name, data] of Object.entries(files)) fs.writeFileSync(path.join(dir, 'assets', 'tables', name), JSON.stringify(data))
+    fs.writeFileSync(path.join(dir, 'assets', 'tables', 'outer.json'), JSON.stringify({ columns: [{ name: 'A' }], rows: [[cell]] }))
+    return new Md2Html().renderBody('[JsonTable](assets/tables/outer.json)\n', false, dir)
+  }
+
+  test('a link line in a cell is the linked table, its path as in the body', () => {
+    const html = render('Before:\n\n[JsonTable](assets/tables/inner.json)\n\nAfter', { 'inner.json': { columns: [{ name: 'Value' }], rows: [['x']] } })
+    assert.strictEqual((html.match(/<table/g) || []).length, 2)
+    assert.ok(html.includes('<th') && html.includes('Value'))
+    assert.ok(!html.includes('[JsonTable]'), 'the link is drawn as a table, not as a link')
+    assert.ok(html.indexOf('Before:') < html.indexOf('Value') && html.indexOf('Value') < html.indexOf('After'))
+  })
+
+  test('a cell renders with the page settings, so a diagram in it uses the page config', () => {
+    const md = new Md2Html()
+    md.initMarkdown()
+    const seen = []
+    const fence = md.md.renderer.rules.fence
+    md.md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+      if (tokens[idx].info === 'probe') { seen.push(env._mermaidConfig); return '<pre>probe</pre>' }
+      return fence(tokens, idx, options, env, self)
+    }
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsontable-'))
+    fs.mkdirSync(path.join(dir, 'assets', 'tables'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'assets', 'tables', 'outer.json'), JSON.stringify({ rows: [['A\n\n```probe\nx\n```']] }))
+    md.mermaidConfig = '{"theme":"page"}'
+    md.renderBody('[JsonTable](assets/tables/outer.json)\n', false, dir)
+    assert.deepStrictEqual(seen, ['{"theme":"page"}'])
+  })
+
+  test('a nested table may nest again', () => {
+    const html = render('[JsonTable](assets/tables/a.json)', {
+      'a.json': { rows: [['[JsonTable](assets/tables/b.json)']] },
+      'b.json': { rows: [['deep']] }
+    })
+    assert.strictEqual((html.match(/<table/g) || []).length, 3)
+    assert.ok(html.includes('deep'))
+  })
+
+  test('a ```jsonTable fence in a cell renders whole, as in the body', () => {
+    const fence = '```jsonTable\n{"rows": [["R", "F"],\n ["T", "<"]]}\n```'
+    const html = render('Layout:\n\n' + fence + '\n\nEnd')
+    assert.strictEqual((html.match(/<table/g) || []).length, 2)
+    assert.ok(html.includes('colspan="2"'))
+    assert.ok(!html.includes('```'))
+  })
+})

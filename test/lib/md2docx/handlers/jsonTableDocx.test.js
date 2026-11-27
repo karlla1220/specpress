@@ -268,3 +268,69 @@ describe('jsonToDocxTable: list lines in a cell', () => {
     assert.ok(JSON.stringify(table).includes('w:u'), 'expected an underline property')
   })
 })
+
+describe('Cell blocks: nested JsonTable link and fenced block', () => {
+  const fs = require('fs')
+  const os = require('os')
+  const { Document, Packer } = require('docx')
+  const JSZip = require('jszip')
+
+  /** The table as Word writes it: document.xml's body, properties left out. */
+  async function bodyXml(table) {
+    const buf = await Packer.toBuffer(new Document({ sections: [{ children: [table] }] }))
+    const xml = await (await JSZip.loadAsync(buf)).file('word/document.xml').async('string')
+    return xml.slice(xml.indexOf('<w:body>'), xml.indexOf('<w:sectPr'))
+      .replace(/<w:(tblPr|tcPr|tblGrid|rPr|pPr)>.*?<\/w:\1>/g, '')
+  }
+  const nested = xml => (xml.match(/<w:tbl>/g) || []).length - 1
+
+  test('a link line in a cell is a Word table in that cell, its path resolved from baseDir', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jsontable-'))
+    fs.mkdirSync(path.join(dir, 'assets', 'tables'), { recursive: true })
+    fs.writeFileSync(path.join(dir, 'assets', 'tables', 'inner.json'), JSON.stringify({ rows: [['inner text']] }))
+    const xml = await bodyXml(await jsonToDocxTable({ rows: [['Before\n\n[JsonTable](assets/tables/inner.json)']] }, { baseDir: dir }))
+    assert.strictEqual(nested(xml), 1)
+    assert.ok(xml.includes('>inner text<'))
+    assert.ok(!xml.includes('[JsonTable]'))
+    assert.ok(xml.endsWith('</w:tbl><w:p></w:p></w:tc></w:tr></w:tbl>'), 'Word ends the cell with a paragraph after the nested table')
+  })
+
+  test('readFile reads the linked table (a git or webview resolver)', async () => {
+    const read = p => { assert.strictEqual(p, path.resolve('/spec', 't/n.json')); return JSON.stringify({ rows: [['from resolver']] }) }
+    const xml = await bodyXml(await jsonToDocxTable({ rows: [['[JsonTable](t/n.json)']] }, { baseDir: '/spec', readFile: read }))
+    assert.ok(xml.includes('>from resolver<'))
+  })
+
+  test('a nested table may nest again', async () => {
+    const tables = { 'a.json': { rows: [['[JsonTable](b.json)']] }, 'b.json': { rows: [['deep']] } }
+    const read = p => JSON.stringify(tables[path.basename(p)])
+    const xml = await bodyXml(await jsonToDocxTable({ rows: [['[JsonTable](a.json)']] }, { baseDir: '/spec', readFile: read }))
+    assert.strictEqual(nested(xml), 2)
+    assert.ok(xml.includes('>deep<'))
+  })
+
+  test('a ```jsonTable fence in a cell is a Word table', async () => {
+    const xml = await bodyXml(await jsonToDocxTable({ rows: [['```jsonTable\n{"rows": [["R", "F"]]}\n```']] }))
+    assert.strictEqual(nested(xml), 1)
+    assert.ok(xml.includes('>R<') && xml.includes('>F<'))
+    assert.ok(!xml.includes('```'))
+  })
+
+  test('a cell image is the run files.image makes, also beside a nested table and inside it', async () => {
+    const { TextRun } = require('docx')
+    const tables = { 'n.json': { rows: [['![b](b.png) in the nested table']] } }
+    const files = { baseDir: '/spec', readFile: p => JSON.stringify(tables[path.basename(p)]),
+      image: token => new TextRun(`IMG:${token.attrGet('src')}:${token.attrGet('width') || ''}`) }
+    const xml = await bodyXml(await jsonToDocxTable(
+      { rows: [['![a](a.png){width=40} before\n\n[JsonTable](n.json)']] }, files))
+    assert.strictEqual(nested(xml), 1)
+    assert.ok(xml.includes('>IMG:a.png:40<'), 'the outer cell keeps its image, with its size')
+    assert.ok(xml.includes('>IMG:b.png:<'), 'the nested table keeps its image')
+    assert.ok(!xml.includes('[JsonTable]'))
+  })
+
+  test('a missing linked table is an error paragraph, not a failed export', async () => {
+    const xml = await bodyXml(await jsonToDocxTable({ rows: [['[JsonTable](missing.json)']] }, { baseDir: os.tmpdir() }))
+    assert.ok(xml.includes('[JsonTable error:'))
+  })
+})
