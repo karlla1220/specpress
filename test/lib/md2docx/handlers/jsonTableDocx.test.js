@@ -316,6 +316,19 @@ describe('Cell blocks: nested JsonTable link and fenced block', () => {
     assert.ok(!xml.includes('```'))
   })
 
+  test('a cell image is the run files.image makes, also beside a nested table and inside it', async () => {
+    const { TextRun } = require('docx')
+    const tables = { 'n.json': { rows: [['![b](b.png) in the nested table']] } }
+    const files = { baseDir: '/spec', readFile: p => JSON.stringify(tables[path.basename(p)]),
+      image: token => new TextRun(`IMG:${token.attrGet('src')}:${token.attrGet('width') || ''}`) }
+    const xml = await bodyXml(await jsonToDocxTable(
+      { rows: [['![a](a.png){width=40} before\n\n[JsonTable](n.json)']] }, files))
+    assert.strictEqual(nested(xml), 1)
+    assert.ok(xml.includes('>IMG:a.png:40<'), 'the outer cell keeps its image, with its size')
+    assert.ok(xml.includes('>IMG:b.png:<'), 'the nested table keeps its image')
+    assert.ok(!xml.includes('[JsonTable]'))
+  })
+
   test('a missing linked table is an error paragraph, not a failed export', async () => {
     const xml = await bodyXml(await jsonToDocxTable({ rows: [['[JsonTable](missing.json)']] }, { baseDir: os.tmpdir() }))
     assert.ok(xml.includes('[JsonTable error:'))
